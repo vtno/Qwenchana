@@ -1,0 +1,64 @@
+From 41c777c28040f1ae905e7f1b459b20fcb2d3bfe2 Mon Sep 17 00:00:00 2001
+From: thamtech <contact@thamtech.co>
+Date: Thu, 20 Aug 2026 23:03:17 +0000
+Subject: [PATCH] humming: fall back when layer lacks output_partition_sizes
+
+Fixes vLLM issue #52434 ('ParallelLMHead' object has no attribute
+'output_partition_sizes') when serving NVFP4/FP8 checkpoints with a
+quantized lm_head (e.g. unsloth/Qwen3.8-27B-NVFP4).
+
+In prepare_humming_layer:
+- shape_n_stacks: hasattr fallback to output_size_per_partition,
+  then output_size
+- shape_n (Step 2, prepare_layer_meta): fall back to shape_n_stacks[0]
+- has_bias: getattr(layer, 'has_bias', False) instead of hard access
+
+Superseded by upstream PR #52451; drop once merged.
+Verified on vLLM 0.27.1 (pip, cu13), 2x RTX 3090, TP2.
+---
+ .../layers/quantization/utils/humming_utils.py    | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/vllm/model_executor/layers/quantization/utils/humming_utils.py b/vllm/model_executor/layers/quantization/utils/humming_utils.py
+index 15c6a17..e6eaa87 100644
+--- a/vllm/model_executor/layers/quantization/utils/humming_utils.py
++++ b/vllm/model_executor/layers/quantization/utils/humming_utils.py
+@@ -462,7 +462,12 @@ def prepare_humming_layer(
+     else:
+         input_size_per_partition = layer.input_size
+     shape_k_stacks = [input_size_per_partition]
+-    shape_n_stacks = layer.output_partition_sizes
++    if hasattr(layer, "output_partition_sizes"):
++        shape_n_stacks = layer.output_partition_sizes
++    elif hasattr(layer, "output_size_per_partition"):
++        shape_n_stacks = [layer.output_size_per_partition]
++    else:
++        shape_n_stacks = [layer.output_size]
+ 
+     # Step 1: convert weight and input schemas to humming standard format
+     weight_schema, tensors = weight_schema.convert_humming(
+@@ -490,15 +495,19 @@ def prepare_humming_layer(
+         setattr(layer, name, param)
+ 
+     # Step 2: transform weight (humming standard format) for forwarding
++    if hasattr(layer, "output_partition_sizes"):
++        shape_n = sum(layer.output_partition_sizes)
++    else:
++        shape_n = shape_n_stacks[0]
+     HummingMethod.prepare_layer_meta(
+         layer=layer,
+-        shape_n=sum(layer.output_partition_sizes),
++        shape_n=shape_n,
+         shape_k=input_size_per_partition,
+         weight_schema=weight_schema,
+         input_schema=input_schema,
+         pad_n_to_multiple=256,
+         pad_k_to_multiple=128,
+-        has_bias=layer.has_bias,
++        has_bias=getattr(layer, "has_bias", False),
+         torch_dtype=layer.params_dtype,
+     )
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,98 @@
+# All-in-one stack: vLLM (model) + LiteLLM gateway + Postgres + Redis.
+#
+#   docker compose up -d          -> everything (needs 2 GPUs + nvidia-container-toolkit)
+#   docker compose up -d litellm db redis
+#                               -> gateway only, when vLLM runs on the host instead
+#                                  (./serve.sh); then set VLLM_BASE_URL=http://host.docker.internal:8000/v1 in .env
+services:
+  vllm:
+    build:
+      context: ..
+      dockerfile: Dockerfile.vllm
+    image: qwen38-vllm:v0.27.1
+    container_name: qwen38-vllm
+    entrypoint: ["vllm", "serve"]
+    command:
+      - /models
+      - --served-model-name
+      - unsloth/Qwen3.8-27B-NVFP4
+      - --tensor-parallel-size
+      - "2"
+      - --max-model-len
+      - "262144"
+      - --reasoning-parser
+      - qwen3
+      - --enable-prefix-caching
+      - --max-num-batched-tokens
+      - "16384"
+      - --skip-mm-profiling
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
+    volumes:
+      - ../models:/models:ro
+    # Local-only: vLLM has no auth; the LiteLLM gateway is the auth/limits
+    # boundary, so the raw API is bound to 127.0.0.1 instead of 0.0.0.0.
+    ports:
+      - "127.0.0.1:8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 2
+              capabilities: [gpu]
+    # vLLM's TP2 executor uses a shared-memory ring buffer (/dev/shm).
+    # Docker's default 64 MiB is not enough (needs 160 MiB) and the engine
+    # core dies with "Insufficient space in /dev/shm" on every boot.
+    shm_size: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 600s
+    restart: unless-stopped
+
+  litellm:
+    image: ${LITELLM_IMAGE}
+    container_name: litellm
+    env_file:
+      - .env
+    ports:
+      - "${LITELLM_PORT}:4000"
+    volumes:
+      - ./config.template.yaml:/app/config.template.yaml:ro
+      - ./render_config.py:/app/render_config.py:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - "python3 /app/render_config.py && litellm --config /app/config.yaml --port 4000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+      - redis
+      - vllm
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: litellm-redis
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  db:
+    image: postgres:17.11
+    container_name: litellm-db
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: litellm
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

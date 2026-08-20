@@ -1,0 +1,50 @@
+# Harness configs for our LiteLLM gateway (Qwen3.8-27B)
+
+Both configs drive Claude Code and OpenCode through the LiteLLM proxy at
+`LITELLM_BASE_URL` using the LiteLLM master key. No secrets are stored in these
+files — set the two env vars first:
+
+```bash
+export LITELLM_BASE_URL=http://localhost:4000
+export LITELLM_API_KEY=<your LiteLLM master key>   # LITELLM_MASTER_KEY from litellm/.env
+```
+
+## OpenCode — `opencode.json`
+
+Uses OpenCode's `{env:VAR}` interpolation, so it reads the two env vars at
+runtime. Use it directly:
+
+```bash
+OPENCODE_CONFIG=assets/opencode.json opencode
+```
+
+(paths relative to the repo root; or use the absolute path to your clone)
+
+or drop/copy it into your project root as `opencode.json` (project config is
+picked up automatically). It sets the model to `litellm/qwen3.8-27b`.
+
+- `baseURL` = `{env:LITELLM_BASE_URL}/v1`
+- `apiKey`  = `{env:LITELLM_API_KEY}`
+
+## Claude Code — `claude-code-env.sh`
+
+Claude Code has no config-file env interpolation (its settings `env` block is
+literal), and it speaks the **Anthropic Messages API** (`/v1/messages`), which
+LiteLLM serves. So instead of a JSON file, this script maps our two env vars to
+the Claude Code variables it reads:
+
+```bash
+source assets/claude-code-env.sh
+claude
+```
+
+or add `source <repo>/assets/claude-code-env.sh` to your shell profile to apply
+everywhere (`<repo>` = wherever you cloned this repo). It sets:
+
+- `ANTHROPIC_BASE_URL`    → `LITELLM_BASE_URL`
+- `ANTHROPIC_AUTH_TOKEN`  → `LITELLM_API_KEY` (sent as `Authorization: Bearer`)
+- `ANTHROPIC_MODEL`       → `qwen3.8-27b` (override by pre-setting `ANTHROPIC_MODEL`)
+- `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` (LiteLLM drops unknown `anthropic-beta` fields)
+
+Verify with `claude` → `/status`: the `Anthropic base URL` line should show
+`LITELLM_BASE_URL`, and the credential line should name `ANTHROPIC_AUTH_TOKEN`.

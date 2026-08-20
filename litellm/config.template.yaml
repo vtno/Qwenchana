@@ -1,0 +1,48 @@
+model_list:
+  - model_name: ${LITELLM_MODEL_NAME}
+    litellm_params:
+      model: openai/${VLLM_MODEL_ID}
+      api_base: ${VLLM_BASE_URL}
+      api_key: ${VLLM_API_KEY}
+      chat_template_kwargs:
+        enable_thinking: false
+
+  - model_name: ${LITELLM_MODEL_NAME_LOW}
+    litellm_params:
+      model: openai/${VLLM_MODEL_ID}
+      api_base: ${VLLM_BASE_URL}
+      api_key: ${VLLM_API_KEY}
+      chat_template_kwargs:
+        reasoning_effort: low
+
+  - model_name: ${LITELLM_MODEL_NAME_MID}
+    litellm_params:
+      model: openai/${VLLM_MODEL_ID}
+      api_base: ${VLLM_BASE_URL}
+      api_key: ${VLLM_API_KEY}
+      chat_template_kwargs:
+        reasoning_effort: medium
+
+  - model_name: ${LITELLM_MODEL_NAME_HIGH}
+    litellm_params:
+      model: openai/${VLLM_MODEL_ID}
+      api_base: ${VLLM_BASE_URL}
+      api_key: ${VLLM_API_KEY}
+      chat_template_kwargs:
+        reasoning_effort: high
+
+  - model_name: ${LITELLM_MODEL_NAME_XHIGH}
+    litellm_params:
+      model: openai/${VLLM_MODEL_ID}
+      api_base: ${VLLM_BASE_URL}
+      api_key: ${VLLM_API_KEY}
+      chat_template_kwargs:
+        reasoning_effort: xhigh
+
+general_settings:
+  coordination_redis:
+    url: os.environ/REDIS_URL
+
+litellm_settings:
+  drop_params: true
+  num_retries: 0

@@ -1,0 +1,27 @@
+# vLLM serving image for Qwen3.8-27B-NVFP4 (2x RTX 3090).
+#
+# The official base image already ships vLLM v0.27.1, torch cu13, CUDA 13
+# and ninja (needed by the humming JIT), so we only layer the local humming
+# patch (vLLM issue #52434) and the NVFP4/Marlin env vars.
+#
+# Build from the repo root (docker build -f Dockerfile.vllm .) or via the
+# `vllm` service in litellm/docker-compose.yml. Weights are NOT baked in:
+# mount ./models at /models (see compose).
+# vllm/vllm-openai:v0.27.1, pinned by digest:
+FROM vllm/vllm-openai@sha256:0a51ea5b4ae2dc5d81890e5173f54203d2a3ae0cfffe51b8fd2afd4391bfd967
+
+ENV VLLM_NVFP4_GEMM_BACKEND=marlin \
+    VLLM_TEST_FORCE_FP8_MARLIN=1 \
+    HF_HUB_OFFLINE=1
+
+COPY patches/vllm-0.27.1-humming-utils-52434.patch /tmp/humming.patch
+
+# cd instead of `git apply --directory`: absolute prefixes are rejected as
+# "invalid path" by git 2.34.
+RUN SP=$(python3 -c 'import site; print(site.getsitepackages()[0])') \
+    && (command -v git >/dev/null 2>&1 \
+        || (apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*)) \
+    && cd "$SP" \
+    && git apply --check /tmp/humming.patch \
+    && git apply /tmp/humming.patch \
+    && rm /tmp/humming.patch

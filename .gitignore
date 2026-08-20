@@ -1,0 +1,32 @@
+# Python virtualenv
+.venv/
+
+# Model weights (downloaded by setup.sh)
+models/
+
+# Secrets / local config - never commit real values
+.env
+litellm/.env
+*.env
+!*.env.example
+
+# Runtime logs
+*.log
+serve*.log
+boot_*.log
+boot_retry.out
+bench/A_baseline/gpu_sweep.log
+bench/*/gpu_sweep.log
+gpu_sweep.log
+
+# Python bytecode / caches
+__pycache__/
+*.pyc
+
+# OS noise
+.DS_Store
+
+# Local scratch
+litellm/config.yaml
+boot_retry.sh
+boot_attempt_*.log

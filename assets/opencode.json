@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "litellm": {
+      "name": "LiteLLM (Qwen3.8 27B)",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "{env:LITELLM_BASE_URL}/v1",
+        "apiKey": "{env:LITELLM_API_KEY}"
+      },
+      "models": {
+        "qwen3.8-27b": {
+          "name": "Qwen3.8 27B",
+          "reasoning": true,
+          "interleaved": "reasoning_content",
+          "limit": { "context": 262144, "output": 65536 }
+        }
+      }
+    }
+  },
+  "model": "litellm/qwen3.8-27b"
+}
