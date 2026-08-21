@@ -1,8 +1,9 @@
-# Qwenmakase 
+# Qwenchana
 
-> *Qwenmakase* plays on *omakase* — the chef's choice.
+> *Qwenchana* plays on Korean *괜찮아* (*gwaenchanha*) — "it's okay": even if
+> you have old GPUs.
 
-Qwenmakase is a turnkey Qwen3.8-27B serving setup specifically for inference server with 2x RTX 3090
+Qwenchana is a turnkey Qwen3.8-27B serving setup specifically for inference server with 2x RTX 3090
 
 Omakase = nothing to tune:
 
@@ -26,7 +27,7 @@ vLLM serve (TP2, NVFP4/Marlin, 256k, prefix caching)
 Requirements: 2x RTX 3090 (24GB), NVIDIA driver ≥ 580, Docker + nvidia-container-toolkit.
 
 ```bash
-./qwenmakase    # downloads weights (~22 GB) if missing, creates litellm/.env
+./qcn    # downloads weights (~22 GB) if missing, creates litellm/.env
                   # (prompts for master key / UI credentials), starts the stack,
                   # waits for vLLM to be healthy, prints connection details
 ```
@@ -34,9 +35,9 @@ Requirements: 2x RTX 3090 (24GB), NVIDIA driver ≥ 580, Docker + nvidia-contain
 Connect a client:
 
 ```bash
-./qwenmakase install opencode   # merge the provider into your existing opencode config
-./qwenmakase run claude         # or: launch a client now (env injected, nothing written)
-./qwenmakase run opencode
+./qcn install opencode   # merge the provider into your existing opencode config
+./qcn run claude         # or: launch a client now (env injected, nothing written)
+./qcn run opencode
 ```
 
 `install opencode` extends your existing config, never overrides it
@@ -47,7 +48,7 @@ Manual alternative (no config files touched at all):
 
 ```bash
 export LITELLM_BASE_URL=http://localhost:4000
-export LITELLM_API_KEY=<printed by ./qwenmakase>
+export LITELLM_API_KEY=<printed by ./qcn>
 OPENCODE_CONFIG=assets/opencode.json opencode    # or:
 source assets/claude-code-env.sh && claude
 ```
@@ -65,23 +66,12 @@ cp litellm/.env.example litellm/.env
 docker compose up -d --build
 ```
 
-Dev path: vLLM on the host via venv (`./setup.sh && ./serve.sh`), gateway only
+Dev path: vLLM on the host via venv ([`setup.sh`](https://github.com/vtno/Qwenchana/blob/main/setup.sh) &&
+[`serve.sh`](https://github.com/vtno/Qwenchana/blob/main/serve.sh)), gateway only
 (`docker compose up -d litellm db redis`), with
 `VLLM_BASE_URL=http://host.docker.internal:8000/v1` in `litellm/.env`.
 
 </details>
-
-## Layout
-
-```
-docker-compose.yml    all-in-one stack (run from root): vllm + litellm + postgres + redis
-Dockerfile.vllm       vLLM image: official v0.27.1 base + humming patch baked in
-litellm/              gateway config (.env, config template, renderer)
-assets/               client configs (opencode.json, claude-code-env.sh)
-patches/              vLLM patch (git-am-able)
-setup.sh / serve.sh   dev path: venv vLLM on the host
-bench/                tuning back-trace behind the serving flags
-```
 
 ## vLLM
 
@@ -102,14 +92,15 @@ on Ampere (see Performance).
 ### Local patch (not upstream yet)
 
 Fixes vLLM #52434 for quantized-lm_head NVFP4 checkpoints (open PR #52451):
-[`patches/vllm-0.27.1-humming-utils-52434.patch`](patches/vllm-0.27.1-humming-utils-52434.patch).
-Baked into the image at build time; `setup.sh` applies it to the venv;
+[`patches/vllm-0.27.1-humming-utils-52434.patch`](https://github.com/vtno/Qwenchana/blob/main/patches/vllm-0.27.1-humming-utils-52434.patch).
+Baked into the image at build time; [`setup.sh`](https://github.com/vtno/Qwenchana/blob/main/setup.sh) applies it to the venv;
 `git am` it into a vLLM checkout if you prefer. Drop once #52451 merges.
 
 ## Gateway
 
-- Config in `litellm/.env`, rendered at container start (LiteLLM doesn't
-  interpolate env vars itself). Apply changes: `docker compose up -d litellm --force-recreate`
+- Config in `litellm/.env` (template: [`litellm/.env.example`](https://github.com/vtno/Qwenchana/blob/main/litellm/.env.example)),
+  rendered at container start (LiteLLM doesn't interpolate env vars itself).
+  Apply changes: `docker compose up -d litellm --force-recreate`
 - Admin UI: http://localhost:4000/ui
 - Model aliases: `qwen3.8-27b` (no thinking) + `-low/-mid/-high/-xhigh`
   reasoning-effort variants + `-ant` (Anthropic Messages API passthrough —
@@ -120,24 +111,26 @@ Baked into the image at build time; `setup.sh` applies it to the venv;
 
 ## Clients
 
-`./qwenmakase install opencode` merges the gateway provider into your existing
-opencode config (extends, never overrides); `./qwenmakase run claude` /
+`./qcn install opencode` merges the gateway provider into your existing
+opencode config (extends, never overrides); `./qcn run claude` /
 `run opencode` launch the clients configured, writing nothing. Zero-config
-alternative via `assets/` (env-var driven, no secrets in the files):
+alternative via [`assets/`](https://github.com/vtno/Qwenchana/tree/main/assets) (env-var driven, no secrets in the files):
 `OPENCODE_CONFIG=assets/opencode.json opencode` or
-`source assets/claude-code-env.sh && claude` — see `assets/README.md`.
+`source assets/claude-code-env.sh && claude` — see [`assets/README.md`](https://github.com/vtno/Qwenchana/blob/main/assets/README.md).
 
 ## Performance
 
 Headline (2x 3090, TP2, pp8192/tg256): prefill ~2500 t/s, generation
 66.7 t/s (c1) / ~73 t/s (c8). Verdicts baked into the flags:
 
-- **MTP off** — −48% single-stream on Ampere
-- **prefix caching on** — 8x faster TTFR on cached context, no gen penalty
-- **`--max-num-batched-tokens 16384`** — prefill +2–3%, gen flat
-- humming == marlin, fp8 KV: no measurable change
+| Serving choice        | Effect (2x 3090)                              |
+| --------------------- | --------------------------------------------- |
+| **MTP off**           | −48% single-stream on Ampere                  |
+| **prefix caching on** | 8x faster TTFR on cached context, no gen penalty |
+| **`--max-num-batched-tokens 16384`** | prefill +2–3%, gen flat          |
+| humming == marlin, fp8 KV | no measurable change                     |
 
-Full back-trace with raw `llama-benchy` tables: `bench/`.
+Full back-trace with raw `llama-benchy` tables: [`bench/`](https://github.com/vtno/Qwenchana/tree/main/bench).
 
 ## Caveats
 

@@ -5,16 +5,17 @@
 From the repo root:
 
 ```bash
-./qwenmakase install opencode   # merge the provider into ~/.config/opencode/opencode.json
-./qwenmakase run claude         # launch Claude Code now (env injected, nothing written)
-./qwenmakase run opencode       # launch OpenCode now
+./qcn install opencode   # merge the provider into ~/.config/opencode/opencode.json
+./qcn run claude         # launch Claude Code now (env injected, nothing written)
+./qcn run opencode       # launch OpenCode now
 ```
 
 - `install opencode`: your existing config is extended (other providers/settings
   kept) and backed up to `opencode.json.bak`. Restart opencode to pick it up.
 - `run` launches the client in a configured shell and changes nothing
   (same effect as the manual methods below).
-- All read the key from `LITELLM_API_KEY` if set, otherwise `litellm/.env`.
+- All read the key from `LITELLM_API_KEY` if set, otherwise
+  [`litellm/.env`](https://github.com/vtno/Qwenchana/blob/main/litellm/.env.example).
 
 ## Manual: env vars
 
@@ -57,7 +58,8 @@ claude
 ```
 
 or add `source <repo>/assets/claude-code-env.sh` to your shell profile to apply
-everywhere (`<repo>` = wherever you cloned this repo). It sets:
+everywhere (`<repo>` = wherever you cloned this repo; the file:
+[`claude-code-env.sh`](https://github.com/vtno/Qwenchana/blob/main/assets/claude-code-env.sh)). It sets:
 
 - `ANTHROPIC_BASE_URL`    → `LITELLM_BASE_URL`
 - `ANTHROPIC_AUTH_TOKEN`  → `LITELLM_API_KEY` (sent as `Authorization: Bearer`)

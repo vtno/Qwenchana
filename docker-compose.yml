@@ -1,4 +1,4 @@
-# Qwenmakase - all-in-one stack: vLLM (model) + LiteLLM gateway + Postgres + Redis.
+# Qwenchana - all-in-one stack: vLLM (model) + LiteLLM gateway + Postgres + Redis.
 # Run from the repo root.
 #
 #   docker compose up -d          -> everything (needs 2 GPUs + nvidia-container-toolkit)
@@ -8,7 +8,7 @@
 #
 # Stack env (keys, URLs, image pin) lives in litellm/.env (the gateway's config);
 # the db password below must match DATABASE_URL in litellm/.env.
-name: qwenmakase
+name: qwenchana
 services:
   vllm:
     build:

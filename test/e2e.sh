@@ -10,8 +10,8 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE_URL="${LITELLM_BASE_URL:-http://localhost:4000}"
 KEY="${LITELLM_API_KEY:-$(grep '^LITELLM_MASTER_KEY=' "$DIR/litellm/.env" 2>/dev/null | cut -d= -f2-)}"
-MODEL="${QWENMAKASE_E2E_MODEL:-qwen3.8-27b}"
-EXPECT="QWENMAKASE-E2E-OK"
+MODEL="${QWENCHANA_E2E_MODEL:-qwen3.8-27b}"
+EXPECT="QWENCHANA-E2E-OK"
 TIMEOUT=240
 PASS=0; FAIL=0
 

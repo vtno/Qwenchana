@@ -22,7 +22,7 @@ resolve_credentials() {
   elif [ -f "$ENV" ]; then
     CRED_KEY=$(grep '^LITELLM_MASTER_KEY=' "$ENV" | cut -d= -f2-)
   fi
-  [ -n "${CRED_KEY:-}" ] || die "no API key: set LITELLM_API_KEY or create litellm/.env first (run ./qwenmakase to set up the stack)"
+  [ -n "${CRED_KEY:-}" ] || die "no API key: set LITELLM_API_KEY or create litellm/.env first (run ./qcn to set up the stack)"
 }
 
 gateway_check() {
@@ -35,18 +35,18 @@ gateway_check() {
 
 usage() {
   cat <<'EOF'
-Qwenmakase - turnkey Qwen3.8-27B serving
+Qwenchana - turnkey Qwen3.8-27B serving
 
 Usage:
-  ./qwenmakase [start]           start the serving stack (default)
-  ./qwenmakase install opencode  merge the qwenmakase provider into your global
+  ./qcn [start]           start the serving stack (default)
+  ./qcn install opencode  merge the qwenchana provider into your global
                                  opencode config (~/.config/opencode/opencode.json)
-  ./qwenmakase run claude         run Claude Code against the gateway (no config
+  ./qcn run claude         run Claude Code against the gateway (no config
                                   changes; extra args are passed through)
-  ./qwenmakase run opencode       run OpenCode against the gateway (no config
+  ./qcn run opencode       run OpenCode against the gateway (no config
                                   changes; extra args are passed through)
-  ./qwenmakase test               e2e: gateway + both harnesses (test/e2e.sh)
-  ./qwenmakase help              this help
+  ./qcn test               e2e: gateway + both harnesses (test/e2e.sh)
+  ./qcn help              this help
 EOF
 }
 
@@ -152,7 +152,7 @@ start_stack() {
 
   echo ""
   echo "=========================================="
-  echo " Qwenmakase is running!"
+  echo " Qwenchana is running!"
   echo "=========================================="
   echo ""
   echo "  vLLM API (direct, no auth):  http://127.0.0.1:8000/v1"
@@ -163,9 +163,9 @@ start_stack() {
   echo "  LITELLM_API_KEY=$KEY"
   echo ""
   echo "Connect a client:"
-  echo "  ./qwenmakase install opencode    # merge into your opencode config"
-  echo "  ./qwenmakase run claude         # run Claude Code against the gateway"
-  echo "  ./qwenmakase run opencode       # run OpenCode against the gateway"
+  echo "  ./qcn install opencode    # merge into your opencode config"
+  echo "  ./qcn run claude         # run Claude Code against the gateway"
+  echo "  ./qcn run opencode       # run OpenCode against the gateway"
   echo ""
 }
 
@@ -174,7 +174,7 @@ install_opencode() {
   resolve_credentials
   gateway_check
   command -v python3 >/dev/null || die "python3 is required for the opencode config merge"
-  info "Merging qwenmakase provider into ~/.config/opencode/opencode.json (extends, does not override)..."
+  info "Merging qwenchana provider into ~/.config/opencode/opencode.json (extends, does not override)..."
   QM_BASE="$CRED_BASE" QM_KEY="$CRED_KEY" QM_SRC="$DIR/assets/opencode.json" python3 <<'PY'
 import json, os, shutil
 base = os.environ["QM_BASE"].rstrip("/")
@@ -251,5 +251,5 @@ case "${1:-start}" in
     ;;
   test) exec bash "$DIR/test/e2e.sh" ;;
   help|-h|--help) usage ;;
-  *) die "unknown command: $1 (see ./qwenmakase help)" ;;
+  *) die "unknown command: $1 (see ./qcn help)" ;;
 esac
