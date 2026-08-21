@@ -15,4 +15,6 @@ for f in opencode.json claude-code-env.sh; do
   curl -fsSL "$RAW/assets/$f" -o "$D/assets/$f"
 done
 
-bash "$D/qcn" "$@"
+# Run qcn with the terminal as stdin so interactive prompts (gateway URL,
+# API key) work even though this script itself was piped via curl.
+bash "$D/qcn" "$@" < /dev/tty

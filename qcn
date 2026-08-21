@@ -16,13 +16,51 @@ ok()   { printf "\033[32m    %s\033[0m\n" "$1"; }
 random_hex() { openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
 resolve_credentials() {
-  CRED_BASE="${LITELLM_BASE_URL:-http://localhost:4000}"
+  CRED_BASE="${LITELLM_BASE_URL:-}"   # no default: always ask when unset
+  # Callers use CRED_BASE / CRED_KEY after this returns — keep them global.
+  local CRED_BASE_INPUT CRED_KEY_INPUT yn PROFILE PROFILE_INPUT
   if [ -n "${LITELLM_API_KEY:-}" ]; then
     CRED_KEY="$LITELLM_API_KEY"
   elif [ -f "$ENV" ]; then
     CRED_KEY=$(grep '^LITELLM_MASTER_KEY=' "$ENV" | cut -d= -f2-)
   fi
+  # Interactive prompt when either half is missing (fresh box, or partial
+  # env state like only LITELLM_API_KEY set). Ask for each missing piece;
+  # optionally persist to the shell profile.
+  if { [ -z "${CRED_KEY:-}" ] || [ -z "${CRED_BASE:-}" ]; } && [ -t 0 ]; then
+    if [ -z "${CRED_BASE:-}" ]; then
+      printf "  Gateway URL [http://localhost:4000]: " >&2
+      read -r CRED_BASE_INPUT
+      CRED_BASE="${CRED_BASE_INPUT:-http://localhost:4000}"
+    fi
+    if [ -z "${CRED_KEY:-}" ]; then
+      printf "  LITELLM_API_KEY: " >&2
+      read -r CRED_KEY_INPUT
+      CRED_KEY="${CRED_KEY_INPUT:-}"
+    fi
+    [ -n "$CRED_KEY" ] || die "no API key given (and none in env or litellm/.env)"
+    printf "  Save to shell profile so clients pick it up? [y/N] " >&2
+    read -r yn
+    if [[ "${yn:-n}" =~ ^[Yy]$ ]]; then
+      printf "  RC file to append to [~/.bashrc]: " >&2
+      read -r PROFILE_INPUT
+      PROFILE="${PROFILE_INPUT:-$HOME/.bashrc}"
+      PROFILE="${PROFILE/#\~/$HOME}"
+      cat >> "$PROFILE" <<EOF
+
+# Qwenchana gateway (added by qcn)
+export LITELLM_BASE_URL="$CRED_BASE"
+export LITELLM_API_KEY="$CRED_KEY"
+EOF
+      ok "Saved to $PROFILE."
+      printf "  Reload it now for this shell's children? [y/N] " >&2
+      read -r yn
+      [[ "${yn:-n}" =~ ^[Yy]$ ]] && export LITELLM_BASE_URL="$CRED_BASE" LITELLM_API_KEY="$CRED_KEY"
+      ok "New shells get it automatically (source $PROFILE applies it to this one)."
+    fi
+  fi
   [ -n "${CRED_KEY:-}" ] || die "no API key: set LITELLM_API_KEY or create litellm/.env first (run ./qcn to set up the stack)"
+  [ -n "${CRED_BASE:-}" ] || CRED_BASE="http://localhost:4000"
 }
 
 gateway_check() {
