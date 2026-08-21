@@ -73,6 +73,42 @@ Dev path: vLLM on the host via venv ([`setup.sh`](https://github.com/vtno/Qwench
 
 </details>
 
+## Usage
+
+Harness configs via [`assets/`](https://github.com/vtno/Qwenchana/tree/main/assets) (env-var driven, no secrets in the files) — see [`assets/README.md`](https://github.com/vtno/Qwenchana/blob/main/assets/README.md).
+
+### OpenCode
+
+```bash
+./qcn install opencode   # merge the gateway provider into your existing config (extends, never overrides)
+./qcn run opencode       # or launch now (env injected, nothing written)
+# zero-config: OPENCODE_CONFIG=assets/opencode.json opencode
+```
+
+### Claude Code
+
+```bash
+./qcn run claude         # launch now (env injected, nothing written)
+# zero-config: source assets/claude-code-env.sh && claude
+```
+
+Routed to the `-ant` gateway alias (Anthropic passthrough to vLLM's native `/v1/messages`).
+
+### Manual wiring
+
+```bash
+# OpenAI route — OpenCode, any OpenAI client (via /v1/chat/completions)
+curl http://localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hi"}]}'
+
+# Anthropic route — Claude Code (via /v1/messages, native)
+ANTHROPIC_BASE_URL=http://localhost:4000 ANTHROPIC_AUTH_TOKEN=$LITELLM_API_KEY \
+  claude --model qwen3.8-27b-ant
+```
+
+`./qcn` does this for you; the snippets above are the underlying calls.
+
 ## Technical Specification
 
 ### vLLM
@@ -129,42 +165,6 @@ Headline (2x 3090, TP2, pp8192/tg256): prefill ~2500 t/s, generation
 | humming == marlin, fp8 KV | no measurable change                     |
 
 Full back-trace with raw `llama-benchy` tables: [`bench/`](https://github.com/vtno/Qwenchana/tree/main/bench).
-
-## Usage
-
-Harness configs via [`assets/`](https://github.com/vtno/Qwenchana/tree/main/assets) (env-var driven, no secrets in the files) — see [`assets/README.md`](https://github.com/vtno/Qwenchana/blob/main/assets/README.md).
-
-### OpenCode
-
-```bash
-./qcn install opencode   # merge the gateway provider into your existing config (extends, never overrides)
-./qcn run opencode       # or launch now (env injected, nothing written)
-# zero-config: OPENCODE_CONFIG=assets/opencode.json opencode
-```
-
-### Claude Code
-
-```bash
-./qcn run claude         # launch now (env injected, nothing written)
-# zero-config: source assets/claude-code-env.sh && claude
-```
-
-Routed to the `-ant` gateway alias (Anthropic passthrough to vLLM's native `/v1/messages`).
-
-### Manual wiring
-
-```bash
-# OpenAI route — OpenCode, any OpenAI client (via /v1/chat/completions)
-curl http://localhost:4000/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_API_KEY" \
-  -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hi"}]}'
-
-# Anthropic route — Claude Code (via /v1/messages, native)
-ANTHROPIC_BASE_URL=http://localhost:4000 ANTHROPIC_AUTH_TOKEN=$LITELLM_API_KEY \
-  claude --model qwen3.8-27b-ant
-```
-
-`./qcn` does this for you; the snippets above are the underlying calls.
 
 ## Caveats
 
