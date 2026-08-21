@@ -40,6 +40,13 @@ Connect a client:
 ./qcn run opencode
 ```
 
+One-liner (no clone) — `run` / `install` from remote (fetched to temp, cleaned up after):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vtno/Qwenchana/main/run.sh | bash -s -- run claude
+curl -fsSL https://raw.githubusercontent.com/vtno/Qwenchana/main/run.sh | bash -s -- install opencode
+```
+
 `install opencode` extends your existing config, never overrides it
 (opencode's previous config is kept as `opencode.json.bak`). `run` just
 execs the client in a configured shell.
