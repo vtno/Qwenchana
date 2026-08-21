@@ -1,9 +1,11 @@
-# Qwen3.8-27B — turnkey LLM serving
+# Qwenmakase — turnkey Qwen3.8-27B serving
 
-A pre-packaged local LLM serving stack: `unsloth/Qwen3.8-27B-NVFP4` (256k context)
-served by vLLM on **2x RTX 3090 (24GB)**, fronted by a LiteLLM gateway
-(key auth, rate limits, budgets), with ready-to-use client configs for
-Claude Code and OpenCode. Two scripts to serve, two env vars to connect.
+*Qwenmakase* plays on *omakase* — the chef's choice. There's nothing to tune
+here: `unsloth/Qwen3.8-27B-NVFP4` (256k context) is served by vLLM on
+**2x RTX 3090 (24GB)** behind a LiteLLM gateway (key auth, rate limits,
+budgets), with ready-to-use client configs for Claude Code and OpenCode.
+The serving flags are the output of a full benchmark pass (see Performance).
+Two commands to serve, two env vars to connect.
 
 ```
 client (claude / opencode / any OpenAI client)
