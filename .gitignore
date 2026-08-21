@@ -1,6 +1,10 @@
 # Python virtualenv
 .venv/
 
+# llama.cpp GGUF bench (local, large)
+llama.cpp/
+models-gguf/
+
 # Model weights (downloaded by setup.sh)
 models/
 

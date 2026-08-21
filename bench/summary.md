@@ -12,6 +12,7 @@ NVFP4 via Marlin, TP=2, 256k context, MTP weights present but disabled.
   flat. 32768 does not fit (KV cache drops below 262144-token requirement).
 - **Kernel backend and KV dtype: no change.** humming == marlin on Ampere; fp8 KV
   changes nothing on this hybrid model (state is Gated DeltaNet, not attention KV).
+- **Scheduler watermark 0.03: no win.** c1 flat, c8 TTFR +11% within variance; keep default 0.
 
 ## Final serving numbers (pp8192/tg256)
 | metric | c1 | c8 |

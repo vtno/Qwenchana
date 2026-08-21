@@ -43,6 +43,9 @@
 - [x] E: --max-num-batched-tokens 16384 -- prefill +2-3%, gen flat (E_scheduler/) - ADOPTED
       (32768 fails: KV cache too small for 262144 max len)
 - [x] F: --kv-cache-dtype fp8 -- no change, no VRAM saving on hybrid (F_kv_fp8/) - SKIP
+- [x] G: --watermark 0.03 -- no win, c8 TTFR +11% (within variance), c1 flat (G_scheduler/) - KEEP DEFAULT
+- [x] G2: llama.cpp GGUF Q8_0 vs UD-Q4_K_XL -- both slower than vLLM NVFP4 (G_llamacpp_q8/, G_llamacpp_q4/) - KEEP NVFP4
+      Q8: 1672 t/s pp c1 (+59% TTFT), 27.6 t/s gen; Q4: 1550 t/s pp c1 (+70% TTFT), 40.8 t/s gen vs 2529/66.9 NVFP4
 
 ## Final config (baked into serve.sh, live since 2026-08-19 ~21:45)
   --tensor-parallel-size 2 --max-model-len 262144 --reasoning-parser qwen3
