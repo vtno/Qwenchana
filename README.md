@@ -23,21 +23,33 @@ Requirements: 2x RTX 3090 (24GB), NVIDIA driver ≥ 580, Docker + nvidia-contain
 Python 3.12 (only for the one-time model download).
 
 ```bash
-# 1. One-time: fetch model weights (~22 GB) into ./models (pinned revision)
-pip install -U "huggingface_hub[cli]"
-hf download unsloth/Qwen3.8-27B-NVFP4 \
-  --revision 7d6f8d4d72f56b92b3cdbf22f156b90e1bab0108 --local-dir models
+# One command: download weights if missing, initialise litellm/.env (prompts for
+# master key / admin credentials), then start the whole stack.
+./qwenmakase.sh
+```
 
-# 2. Configure and start the whole stack (vLLM + gateway + Postgres + Redis)
-cd litellm && cp .env.example .env           # set LITELLM_MASTER_KEY, DB_PASSWORD
-docker compose up -d --build
-# gateway: http://localhost:4000   vLLM: http://localhost:8000/v1
+The script will:
+1. Download the model (~22 GB) into `./models` if it's not there yet
+2. Create `litellm/.env` from the template, prompting for master key + UI credentials
+3. Run `docker compose up -d --build` (vLLM + gateway + Postgres + Redis)
+4. Wait for vLLM to become healthy and print the connection details
 
-# 3. Point a client at it
+Then connect a client:
+
+```bash
 export LITELLM_BASE_URL=http://localhost:4000
-export LITELLM_API_KEY=<LITELLM_MASTER_KEY>
+export LITELLM_API_KEY=<printed by qwenmakase.sh>
 OPENCODE_CONFIG=assets/opencode.json opencode        # or:
 source assets/claude-code-env.sh && claude
+```
+
+Manual setup (if you prefer not to use the script):
+
+```bash
+hf download unsloth/Qwen3.8-27B-NVFP4 \
+  --revision 7d6f8d4d72f56b92b3cdbf22f156b90e1bab0108 --local-dir models
+cp litellm/.env.example litellm/.env        # edit with your own values
+docker compose up -d --build
 ```
 
 Dev/alternative: run vLLM on the host via the venv (`./setup.sh && ./serve.sh`) and
@@ -51,8 +63,9 @@ the gateway). Disable thinking per request with
 ## What's included
 
 ```
+docker-compose.yml    all-in-one stack: vllm + litellm + postgres + redis (run from root)
 Dockerfile.vllm       vLLM serving image (official base + humming patch baked in)
-litellm/              all-in-one compose: vllm + litellm + postgres + redis
+litellm/              gateway config (.env, config template, renderer)
 assets/               client harness configs (opencode.json, claude-code-env.sh)
 patches/              git patch for vLLM (baked into the image at build time)
 setup.sh / serve.sh   dev path: venv vLLM on the host (fallback, faster iteration)
@@ -107,14 +120,15 @@ Once PR #52451 merges upstream, the patch can be dropped.
 
 ## LiteLLM gateway
 
-The `litellm/` compose stack runs everything at once: `vllm` (model, 2 GPUs) +
+The compose stack at the repo root runs everything at once: `vllm` (model, 2 GPUs) +
 `litellm` (gateway on `:4000`) + Postgres (keys, spend, budgets) + Redis (rate
 limits, cross-pod coordination). `docker compose up -d --build` brings the whole
 stack up; the gateway reaches the model in-network at `http://vllm:8000/v1`.
 
-- Config is rendered from `config.template.yaml` by `render_config.py` at container
+- Gateway config (keys, URLs, model names) lives in `litellm/.env`; the config is
+  rendered from `litellm/config.template.yaml` by `render_config.py` at container
   start (LiteLLM does not interpolate env vars in config.yaml itself)
-- Apply `.env` changes: `docker compose up -d --force-recreate`
+- Apply `litellm/.env` changes: `docker compose up -d litellm --force-recreate`
 - Admin UI: http://localhost:4000/ui
 - Model aliases: `qwen3.8-27b` (no thinking), plus `-low/-mid/-high/-xhigh`
   reasoning-effort variants

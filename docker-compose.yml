@@ -1,13 +1,18 @@
-# All-in-one stack: vLLM (model) + LiteLLM gateway + Postgres + Redis.
+# Qwenmakase - all-in-one stack: vLLM (model) + LiteLLM gateway + Postgres + Redis.
+# Run from the repo root.
 #
 #   docker compose up -d          -> everything (needs 2 GPUs + nvidia-container-toolkit)
 #   docker compose up -d litellm db redis
 #                               -> gateway only, when vLLM runs on the host instead
-#                                  (./serve.sh); then set VLLM_BASE_URL=http://host.docker.internal:8000/v1 in .env
+#                                  (./serve.sh); then set VLLM_BASE_URL=http://host.docker.internal:8000/v1 in litellm/.env
+#
+# Stack env (keys, URLs, image pin) lives in litellm/.env (the gateway's config);
+# the db password below must match DATABASE_URL in litellm/.env.
+name: qwenmakase
 services:
   vllm:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile.vllm
     image: qwen38-vllm:v0.27.1
     container_name: qwen38-vllm
@@ -30,7 +35,7 @@ services:
       - --tool-call-parser
       - qwen3_coder
     volumes:
-      - ../models:/models:ro
+      - ./models:/models:ro
     # Local-only: vLLM has no auth; the LiteLLM gateway is the auth/limits
     # boundary, so the raw API is bound to 127.0.0.1 instead of 0.0.0.0.
     ports:
@@ -55,15 +60,17 @@ services:
     restart: unless-stopped
 
   litellm:
-    image: ${LITELLM_IMAGE}
+    # Pinned by digest (litellm 1.99.0; no v1.99.0 tag on ghcr). To bump,
+    # re-resolve the digest: docker buildx imagetools inspect ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm@sha256:aded103a25605460bd6338fee6ba0bdbecfc548a27b59a1710f591c91671b47a
     container_name: litellm
     env_file:
-      - .env
+      - litellm/.env
     ports:
-      - "${LITELLM_PORT}:4000"
+      - "4000:4000"
     volumes:
-      - ./config.template.yaml:/app/config.template.yaml:ro
-      - ./render_config.py:/app/render_config.py:ro
+      - ./litellm/config.template.yaml:/app/config.template.yaml:ro
+      - ./litellm/render_config.py:/app/render_config.py:ro
     entrypoint: ["sh", "-c"]
     command:
       - "python3 /app/render_config.py && litellm --config /app/config.yaml --port 4000"
@@ -87,7 +94,8 @@ services:
     container_name: litellm-db
     environment:
       POSTGRES_USER: litellm
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Internal only (db exposes no port). Must match DATABASE_URL in litellm/.env.
+      POSTGRES_PASSWORD: litellm-pg
       POSTGRES_DB: litellm
     volumes:
       - pgdata:/var/lib/postgresql/data
