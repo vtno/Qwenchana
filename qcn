@@ -50,9 +50,8 @@ Usage:
 EOF
 }
 
-# ---------- start (default) ----------
-start_stack() {
-  # ---------- pre-flight ----------
+# ---------- pre-flight (extracted for testability) ----------
+preflight_checks() {
   command -v docker >/dev/null || die "docker is not installed"
   docker info --format '{{.Driver}}' >/dev/null 2>&1 || die "docker daemon is not running (or no permission)"
 
@@ -62,6 +61,23 @@ start_stack() {
     read -rp "Continue anyway? [y/N] " yn
     [[ "$yn" =~ ^[Yy]$ ]] || exit 1
   fi
+
+  # nvidia driver version (requires >= 580 per README)
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    DRIVER_VER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 | cut -d. -f1)
+    if [ -n "${DRIVER_VER:-}" ] && [ "$DRIVER_VER" -lt 580 ] 2>/dev/null; then
+      printf "\033[33mWarning: NVIDIA driver %s detected, but >= 580 is required (README).\033[0m\n" "$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)"
+      read -rp "Continue anyway? [y/N] " yn
+      [[ "$yn" =~ ^[Yy]$ ]] || exit 1
+    fi
+  else
+    printf "\033[33mWarning: nvidia-smi not found — cannot verify driver version (>= 580 required).\033[0m\n"
+  fi
+}
+
+# ---------- start (default) ----------
+start_stack() {
+  preflight_checks
 
   # ---------- 1. models ----------
   if [ -f "$MODEL_DIR/config.json" ]; then
@@ -233,7 +249,8 @@ run_opencode() {
   exec opencode "$@"
 }
 
-# ---------- dispatch ----------
+# ---------- dispatch (guarded for sourcing in tests) ----------
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 case "${1:-start}" in
   start) start_stack ;;
   install)
@@ -244,8 +261,8 @@ case "${1:-start}" in
     ;;
   run)
     case "${2:-}" in
-      claude) open_claude "${@:3}" ;;
-      opencode) open_opencode "${@:3}" ;;
+      claude) run_claude "${@:3}" ;;
+      opencode) run_opencode "${@:3}" ;;
       *) die "unknown run target: ${2:-} (expected: claude | opencode)" ;;
     esac
     ;;
@@ -253,3 +270,4 @@ case "${1:-start}" in
   help|-h|--help) usage ;;
   *) die "unknown command: $1 (see ./qcn help)" ;;
 esac
+fi
