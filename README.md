@@ -1,82 +1,91 @@
-# Qwenmakase — turnkey Qwen3.8-27B serving
+# Qwenmakase 
 
-*Qwenmakase* plays on *omakase* — the chef's choice. There's nothing to tune
-here: `unsloth/Qwen3.8-27B-NVFP4` (256k context) is served by vLLM on
-**2x RTX 3090 (24GB)** behind a LiteLLM gateway (key auth, rate limits,
-budgets), with ready-to-use client configs for Claude Code and OpenCode.
-The serving flags are the output of a full benchmark pass (see Performance).
-Two commands to serve, two env vars to connect.
+> *Qwenmakase* plays on *omakase* — the chef's choice.
+
+Qwenmakase is a turnkey Qwen3.8-27B serving setup specifically for inference server with 2x RTX 3090
+
+Omakase = nothing to tune:
+
+- `unsloth/Qwen3.8-27B-NVFP4` (256k context) on **2x RTX 3090**
+- vLLM
+- LiteLLM gateway (auth, rate limits, budgets)
+- Claude Code / OpenCode client configs.
 
 ```
 client (claude / opencode / any OpenAI client)
         │  http://localhost:4000
         ▼
 LiteLLM gateway ── Postgres (keys/budgets) + Redis (rate limits)
-        │  http://host.docker.internal:8000
+        │  http://vllm:8000
         ▼
 vLLM serve (TP2, NVFP4/Marlin, 256k, prefix caching)
 ```
 
 ## Quick start
 
-Requirements: 2x RTX 3090 (24GB), NVIDIA driver ≥ 580, Docker + nvidia-container-toolkit,
-Python 3.12 (only for the one-time model download).
+Requirements: 2x RTX 3090 (24GB), NVIDIA driver ≥ 580, Docker + nvidia-container-toolkit.
 
 ```bash
-# One command: download weights if missing, initialise litellm/.env (prompts for
-# master key / admin credentials), then start the whole stack.
-./qwenmakase.sh
+./qwenmakase    # downloads weights (~22 GB) if missing, creates litellm/.env
+                  # (prompts for master key / UI credentials), starts the stack,
+                  # waits for vLLM to be healthy, prints connection details
 ```
 
-The script will:
-1. Download the model (~22 GB) into `./models` if it's not there yet
-2. Create `litellm/.env` from the template, prompting for master key + UI credentials
-3. Run `docker compose up -d --build` (vLLM + gateway + Postgres + Redis)
-4. Wait for vLLM to become healthy and print the connection details
+Connect a client:
 
-Then connect a client:
+```bash
+./qwenmakase install opencode   # merge the provider into your existing opencode config
+./qwenmakase run claude         # or: launch a client now (env injected, nothing written)
+./qwenmakase run opencode
+```
+
+`install opencode` extends your existing config, never overrides it
+(opencode's previous config is kept as `opencode.json.bak`). `run` just
+execs the client in a configured shell.
+
+Manual alternative (no config files touched at all):
 
 ```bash
 export LITELLM_BASE_URL=http://localhost:4000
-export LITELLM_API_KEY=<printed by qwenmakase.sh>
-OPENCODE_CONFIG=assets/opencode.json opencode        # or:
+export LITELLM_API_KEY=<printed by ./qwenmakase>
+OPENCODE_CONFIG=assets/opencode.json opencode    # or:
 source assets/claude-code-env.sh && claude
 ```
 
-Manual setup (if you prefer not to use the script):
+Any OpenAI-compatible client also works directly against `http://localhost:8000/v1`.
+Disable thinking per request with `"chat_template_kwargs": {"enable_thinking": false}`.
+
+<details>
+<summary>Manual setup / dev path</summary>
 
 ```bash
 hf download unsloth/Qwen3.8-27B-NVFP4 \
   --revision 7d6f8d4d72f56b92b3cdbf22f156b90e1bab0108 --local-dir models
-cp litellm/.env.example litellm/.env        # edit with your own values
+cp litellm/.env.example litellm/.env
 docker compose up -d --build
 ```
 
-Dev/alternative: run vLLM on the host via the venv (`./setup.sh && ./serve.sh`) and
-start only the gateway with `docker compose up -d litellm db redis`, setting
+Dev path: vLLM on the host via venv (`./setup.sh && ./serve.sh`), gateway only
+(`docker compose up -d litellm db redis`), with
 `VLLM_BASE_URL=http://host.docker.internal:8000/v1` in `litellm/.env`.
 
-Any OpenAI-compatible client works directly against `:8000` (or `:4000` through
-the gateway). Disable thinking per request with
-`"chat_template_kwargs": {"enable_thinking": false}`.
+</details>
 
-## What's included
+## Layout
 
 ```
-docker-compose.yml    all-in-one stack: vllm + litellm + postgres + redis (run from root)
-Dockerfile.vllm       vLLM serving image (official base + humming patch baked in)
+docker-compose.yml    all-in-one stack (run from root): vllm + litellm + postgres + redis
+Dockerfile.vllm       vLLM image: official v0.27.1 base + humming patch baked in
 litellm/              gateway config (.env, config template, renderer)
-assets/               client harness configs (opencode.json, claude-code-env.sh)
-patches/              git patch for vLLM (baked into the image at build time)
-setup.sh / serve.sh   dev path: venv vLLM on the host (fallback, faster iteration)
-bench/                tuning benchmarks backing the serving flags
+assets/               client configs (opencode.json, claude-code-env.sh)
+patches/              vLLM patch (git-am-able)
+setup.sh / serve.sh   dev path: venv vLLM on the host
+bench/                tuning back-trace behind the serving flags
 ```
 
-## vLLM serving
+## vLLM
 
-The `vllm` compose service (built from `Dockerfile.vllm`: official
-`vllm/vllm-openai:v0.27.1` + the humming patch + env vars) runs vLLM 0.27.1
-with:
+vLLM 0.27.1 (official image, digest-pinned, CUDA 13 build) with:
 
 ```
 --tensor-parallel-size 2 --max-model-len 262144 --reasoning-parser qwen3
@@ -84,92 +93,56 @@ with:
 --enable-auto-tool-choice --tool-call-parser qwen3_coder
 ```
 
-plus env: `VLLM_NVFP4_GEMM_BACKEND=marlin`, `VLLM_TEST_FORCE_FP8_MARLIN=1`
-(set in the image), and `HF_HUB_OFFLINE=1` (weights come from the mounted
-`./models`). The venv path additionally needs `LD_LIBRARY_PATH` entries for the
-venv's cu13 libs (NVRTC for humming JIT) — handled by `serve.sh`.
-
-- The stack is torch 2.13.0+cu13; driver 580.178.04 or newer.
-- NVFP4 is officially supported by NVIDIA on Hopper/Blackwell; on Ampere it works
-  via the Marlin backend plus the local patch below.
-- MTP draft head is present in the checkpoint but **disabled** — it benchmarks
-  slower on Ampere (see Performance).
-- Tool calling needs `--enable-auto-tool-choice --tool-call-parser qwen3_coder`
-  (clients sending `tool_choice: "auto"` get 400s without it).
+plus `VLLM_NVFP4_GEMM_BACKEND=marlin` — NVFP4 is officially a Hopper/Blackwell
+format; on Ampere it works via the Marlin backend + the patch below. The tool
+flags are required (clients sending `tool_choice: "auto"` 400 without them).
+The MTP draft head is in the checkpoint but **disabled** — it benchmarks slower
+on Ampere (see Performance).
 
 ### Local patch (not upstream yet)
 
-Fixes vLLM issue #52434 (`'ParallelLMHead' object has no attribute
-'output_partition_sizes'`, open PR #52451) for NVFP4/FP8 checkpoints with a
-quantized lm_head. Shipped as a git patch:
-[`patches/vllm-0.27.1-humming-utils-52434.patch`](patches/vllm-0.27.1-humming-utils-52434.patch)
-— `shape_n_stacks` falls back to `output_size_per_partition` / `output_size`
-via hasattr, `shape_n` falls back to `shape_n_stacks[0]`, and `has_bias` uses
-`getattr(layer, "has_bias", False)`.
+Fixes vLLM #52434 for quantized-lm_head NVFP4 checkpoints (open PR #52451):
+[`patches/vllm-0.27.1-humming-utils-52434.patch`](patches/vllm-0.27.1-humming-utils-52434.patch).
+Baked into the image at build time; `setup.sh` applies it to the venv;
+`git am` it into a vLLM checkout if you prefer. Drop once #52451 merges.
 
-`Dockerfile.vllm` bakes it into the image at build time; `setup.sh` applies it
-to the venv automatically. If you install/upgrade vLLM yourself, re-apply:
+## Gateway
 
-```bash
-cd .venv/lib/python3.12/site-packages
-git apply ../../patches/vllm-0.27.1-humming-utils-52434.patch
-```
-
-(Or, against a git checkout of vLLM: `git am patches/vllm-0.27.1-humming-utils-52434.patch`.)
-Once PR #52451 merges upstream, the patch can be dropped.
-
-## LiteLLM gateway
-
-The compose stack at the repo root runs everything at once: `vllm` (model, 2 GPUs) +
-`litellm` (gateway on `:4000`) + Postgres (keys, spend, budgets) + Redis (rate
-limits, cross-pod coordination). `docker compose up -d --build` brings the whole
-stack up; the gateway reaches the model in-network at `http://vllm:8000/v1`.
-
-- Gateway config (keys, URLs, model names) lives in `litellm/.env`; the config is
-  rendered from `litellm/config.template.yaml` by `render_config.py` at container
-  start (LiteLLM does not interpolate env vars in config.yaml itself)
-- Apply `litellm/.env` changes: `docker compose up -d litellm --force-recreate`
+- Config in `litellm/.env`, rendered at container start (LiteLLM doesn't
+  interpolate env vars itself). Apply changes: `docker compose up -d litellm --force-recreate`
 - Admin UI: http://localhost:4000/ui
-- Model aliases: `qwen3.8-27b` (no thinking), plus `-low/-mid/-high/-xhigh`
-  reasoning-effort variants
+- Model aliases: `qwen3.8-27b` (no thinking) + `-low/-mid/-high/-xhigh`
+  reasoning-effort variants + `-ant` (Anthropic Messages API passthrough —
+  Claude Code is routed to vLLM's native `/v1/messages`, which handles its
+  mid-conversation system messages; the OpenAI entries translate via the
+  Responses API, which the Qwen chat template rejects)
+- `:8000` is bound to 127.0.0.1 (vLLM has no auth) — the gateway is the auth boundary
 
-## Client configs
+## Clients
 
-`assets/` points Claude Code and OpenCode at the gateway; both read the key/URL
-from env vars (no secrets in the files). See `assets/README.md`.
-
-- OpenCode: `OPENCODE_CONFIG=assets/opencode.json opencode`
-  (uses `{env:VAR}` interpolation)
-- Claude Code: `source assets/claude-code-env.sh && claude`
-  (maps to `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`; LiteLLM serves the
-  Anthropic Messages API)
+`./qwenmakase install opencode` merges the gateway provider into your existing
+opencode config (extends, never overrides); `./qwenmakase run claude` /
+`run opencode` launch the clients configured, writing nothing. Zero-config
+alternative via `assets/` (env-var driven, no secrets in the files):
+`OPENCODE_CONFIG=assets/opencode.json opencode` or
+`source assets/claude-code-env.sh && claude` — see `assets/README.md`.
 
 ## Performance
 
-The serving flags (compose `vllm` service / `serve.sh`) come from a full tuning
-pass in `bench/` — one directory
-per experiment (MTP, prefix caching, kernel backend, scheduler, KV dtype) with raw
-`llama-benchy` tables (means ± std, 2 runs) and replay commands; see
-`bench/summary.md`.
+Headline (2x 3090, TP2, pp8192/tg256): prefill ~2500 t/s, generation
+66.7 t/s (c1) / ~73 t/s (c8). Verdicts baked into the flags:
 
-Headline numbers (2x 3090, TP2, pp8192/tg256): prefill ~2500 t/s, generation
-66.7 t/s (c1) / ~73 t/s (c8); long-context prefill 2757/2502/2198 t/s at
-2k/8k/32k prompt. Key verdicts baked into the serving flags:
+- **MTP off** — −48% single-stream on Ampere
+- **prefix caching on** — 8x faster TTFR on cached context, no gen penalty
+- **`--max-num-batched-tokens 16384`** — prefill +2–3%, gen flat
+- humming == marlin, fp8 KV: no measurable change
 
-- **MTP off** — the BF16 draft head costs more than it saves on Ampere
-  (−48% single-stream, −11% at c8)
-- **prefix caching on** — 8x faster TTFR on cached context (16.5s → 2.1s @32k),
-  zero generation penalty
-- **`--max-num-batched-tokens 16384`** (2x default) — prefill +2–3%, gen flat
-- humming == marlin and fp8 KV dtype: no measurable change, left at defaults
+Full back-trace with raw `llama-benchy` tables: `bench/`.
 
-## Known caveats
+## Caveats
 
-- **Flaky boot:** the vLLM engine core process can die silently ~3–8s into startup
-  (~1-in-6 boots succeed); no OOM/XID/core dump. Likely NVFP4-on-Ampere.
-  In compose this self-heals via `restart: unless-stopped` + healthcheck;
-  on the host venv: restart in a loop until UP, fallback `--enforce-eager`.
-- Upgrading vLLM means rebuilding the image (`docker compose build vllm`) and
-  re-checking the patch still applies (or re-running `setup.sh` for the venv).
-- Model weights are ~22 GB and are downloaded once into `models/` (mounted
-  read-only into the `vllm` container, never baked into the image).
+- **Flaky boot:** vLLM engine core can die silently ~3–8s into startup
+  (~1-in-6). In compose this self-heals (`restart: unless-stopped`); on the
+  venv path, restart in a loop or fall back to `--enforce-eager`.
+- Upgrading vLLM = rebuild the image + re-verify the patch.
+- Weights (~22 GB) are downloaded once into `models/` (mounted, never in the image).

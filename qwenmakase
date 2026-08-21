@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV="$DIR/litellm/.env"
+ENV_EXAMPLE="$DIR/litellm/.env.example"
+MODEL_DIR="$DIR/models"
+MODEL_ID="unsloth/Qwen3.8-27B-NVFP4"
+MODEL_REV="7d6f8d4d72f56b92b3cdbf22f156b90e1bab0108"
+
+# ---------- helpers ----------
+die()  { printf "\033[31mError: %s\033[0m\n" "$1" >&2; exit 1; }
+info() { printf "\033[36m==> %s\033[0m\n" "$1"; }
+ok()   { printf "\033[32m    %s\033[0m\n" "$1"; }
+
+random_hex() { openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+
+resolve_credentials() {
+  CRED_BASE="${LITELLM_BASE_URL:-http://localhost:4000}"
+  if [ -n "${LITELLM_API_KEY:-}" ]; then
+    CRED_KEY="$LITELLM_API_KEY"
+  elif [ -f "$ENV" ]; then
+    CRED_KEY=$(grep '^LITELLM_MASTER_KEY=' "$ENV" | cut -d= -f2-)
+  fi
+  [ -n "${CRED_KEY:-}" ] || die "no API key: set LITELLM_API_KEY or create litellm/.env first (run ./qwenmakase to set up the stack)"
+}
+
+gateway_check() {
+  if curl -sf -m 3 "$CRED_BASE/health/liveliness" >/dev/null 2>&1; then
+    ok "Gateway reachable at $CRED_BASE"
+  else
+    printf "\033[33m    Warning: gateway not reachable at %s (is the stack running?)\033[0m\n" "$CRED_BASE"
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+Qwenmakase - turnkey Qwen3.8-27B serving
+
+Usage:
+  ./qwenmakase [start]           start the serving stack (default)
+  ./qwenmakase install opencode  merge the qwenmakase provider into your global
+                                 opencode config (~/.config/opencode/opencode.json)
+  ./qwenmakase run claude         run Claude Code against the gateway (no config
+                                  changes; extra args are passed through)
+  ./qwenmakase run opencode       run OpenCode against the gateway (no config
+                                  changes; extra args are passed through)
+  ./qwenmakase test               e2e: gateway + both harnesses (test/e2e.sh)
+  ./qwenmakase help              this help
+EOF
+}
+
+# ---------- start (default) ----------
+start_stack() {
+  # ---------- pre-flight ----------
+  command -v docker >/dev/null || die "docker is not installed"
+  docker info --format '{{.Driver}}' >/dev/null 2>&1 || die "docker daemon is not running (or no permission)"
+
+  # nvidia runtime? (soft check)
+  if ! docker info 2>/dev/null | grep -qi nvidia; then
+    printf "\033[33mWarning: nvidia container runtime not detected. The vllm service will fail without GPU support.\033[0m\n"
+    read -rp "Continue anyway? [y/N] " yn
+    [[ "$yn" =~ ^[Yy]$ ]] || exit 1
+  fi
+
+  # ---------- 1. models ----------
+  if [ -f "$MODEL_DIR/config.json" ]; then
+    ok "Models already present at $MODEL_DIR"
+  else
+    info "Model weights (~22 GB) not found at $MODEL_DIR"
+    read -rp "Download now? (requires huggingface_hub) [Y/n] " yn
+    yn="${yn:-Y}"
+    if [[ ! "$yn" =~ ^[Nn]$ ]]; then
+      if ! command -v hf >/dev/null 2>&1; then
+        info "Installing huggingface_hub CLI..."
+        pip install -U "huggingface_hub[cli]"
+      fi
+      info "Downloading $MODEL_ID (revision ${MODEL_REV:0:8})..."
+      hf download "$MODEL_ID" --revision "$MODEL_REV" --local-dir "$MODEL_DIR"
+      ok "Download complete."
+    else
+      die "Cannot start vLLM without model weights. Run manually:
+  hf download $MODEL_ID --revision $MODEL_REV --local-dir $MODEL_DIR"
+    fi
+  fi
+
+  # ---------- 2. env ----------
+  if [ ! -f "$ENV" ]; then
+    info "Creating litellm/.env from template..."
+    cp "$ENV_EXAMPLE" "$ENV"
+
+    # --- master key ---
+    KEY_DEFAULT=$(random_hex)
+    printf "  LITELLM_MASTER_KEY (gateway API key) [%s]: " "$KEY_DEFAULT" >&2
+    read -r KEY_INPUT
+    KEY_INPUT="${KEY_INPUT:-$KEY_DEFAULT}"
+    sed -i "s/^LITELLM_MASTER_KEY=.*/LITELLM_MASTER_KEY=$KEY_INPUT/" "$ENV"
+    ok "LITELLM_MASTER_KEY=$KEY_INPUT"
+
+    # --- admin UI ---
+    UI_USER_DEFAULT="${USER:-admin}"
+    printf "  UI_USERNAME (admin panel) [%s]: " "$UI_USER_DEFAULT" >&2
+    read -r UI_USER
+    UI_USER="${UI_USER:-$UI_USER_DEFAULT}"
+    sed -i "s/^UI_USERNAME=.*/UI_USERNAME=$UI_USER/" "$ENV"
+
+    UI_PASS_DEFAULT=$(random_hex)
+    printf "  UI_PASSWORD (admin panel) [%s]: " "$UI_PASS_DEFAULT" >&2
+    read -r UI_PASS
+    UI_PASS="${UI_PASS:-$UI_PASS_DEFAULT}"
+    sed -i "s/^UI_PASSWORD=.*/UI_PASSWORD=$UI_PASS/" "$ENV"
+    ok "UI_USERNAME=$UI_USER  UI_PASSWORD=$UI_PASS"
+
+    ok "litellm/.env ready."
+  else
+    ok "litellm/.env already exists."
+  fi
+
+  # ---------- 3. start stack ----------
+  info "Starting stack (docker compose up -d --build)..."
+  cd "$DIR"
+  docker compose up -d --build
+
+  # ---------- 4. wait for vllm ----------
+  info "Waiting for vllm to become healthy (typically 4-8 min; up to ~20 min on a flaky boot)..."
+  HEALTHY=false
+  for i in $(seq 1 60); do
+    STATUS=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' qwen38-vllm 2>/dev/null || echo "missing")
+    if [ "$STATUS" = "healthy" ]; then
+      HEALTHY=true
+      break
+    fi
+    if [ "$STATUS" = "missing" ]; then
+      printf "\r  [%4ds] vllm container not found - check docker ps   " "$((i*20))"
+    else
+      printf "\r  [%4ds] %s   " "$((i*20))" "$STATUS"
+    fi
+    sleep 20
+  done
+  echo ""
+
+  if [ "$HEALTHY" = true ]; then
+    ok "vllm is healthy!"
+  else
+    printf "\033[33mWarning: vllm did not become healthy within 20 minutes.\033[0m\n"
+    printf "  Check logs: docker logs qwen38-vllm --tail 20\n"
+    printf "  The container will keep restarting; try again in a few minutes.\n"
+  fi
+
+  # ---------- 5. summary ----------
+  KEY=$(grep '^LITELLM_MASTER_KEY=' "$ENV" | cut -d= -f2-)
+
+  echo ""
+  echo "=========================================="
+  echo " Qwenmakase is running!"
+  echo "=========================================="
+  echo ""
+  echo "  vLLM API (direct, no auth):  http://127.0.0.1:8000/v1"
+  echo "  Gateway (auth + rate limits): http://localhost:4000/v1"
+  echo "  Admin UI:                     http://localhost:4000/ui"
+  echo ""
+  echo "  LITELLM_BASE_URL=http://localhost:4000"
+  echo "  LITELLM_API_KEY=$KEY"
+  echo ""
+  echo "Connect a client:"
+  echo "  ./qwenmakase install opencode    # merge into your opencode config"
+  echo "  ./qwenmakase run claude         # run Claude Code against the gateway"
+  echo "  ./qwenmakase run opencode       # run OpenCode against the gateway"
+  echo ""
+}
+
+# ---------- install opencode ----------
+install_opencode() {
+  resolve_credentials
+  gateway_check
+  command -v python3 >/dev/null || die "python3 is required for the opencode config merge"
+  info "Merging qwenmakase provider into ~/.config/opencode/opencode.json (extends, does not override)..."
+  QM_BASE="$CRED_BASE" QM_KEY="$CRED_KEY" QM_SRC="$DIR/assets/opencode.json" python3 <<'PY'
+import json, os, shutil
+base = os.environ["QM_BASE"].rstrip("/")
+key  = os.environ["QM_KEY"]
+cfg_path = os.path.expanduser("~/.config/opencode/opencode.json")
+
+src = json.load(open(os.environ["QM_SRC"]))
+cfg = {}
+if os.path.exists(cfg_path):
+    cfg = json.load(open(cfg_path))
+    shutil.copyfile(cfg_path, cfg_path + ".bak")
+
+cfg.setdefault("$schema", "https://opencode.ai/config.json")
+prev_model = cfg.get("model")
+
+prov = json.loads(json.dumps(src["provider"]["litellm"]))
+prov["options"]["baseURL"] = (
+    prov["options"].get("baseURL", "").replace("{env:LITELLM_BASE_URL}", base) or base + "/v1"
+)
+prov["options"]["apiKey"] = key
+cfg.setdefault("provider", {})["litellm"] = prov
+cfg["model"] = src.get("model", "litellm/qwen3.8-27b")
+
+os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+with open(cfg_path, "w") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+
+print(f"    model: {prev_model or '(none)'} -> {cfg['model']}")
+PY
+  ok "opencode configured (global config). Quit and restart opencode to pick it up."
+  [ -f "$HOME/.config/opencode/opencode.json.bak" ] && ok "previous config backed up to opencode.json.bak"
+}
+
+# ---------- run claude ----------
+run_claude() {
+  resolve_credentials
+  gateway_check
+  command -v claude >/dev/null || die "claude CLI not found on PATH"
+  # Reuse assets/claude-code-env.sh as the single source of truth for the
+  # LITELLM_* -> ANTHROPIC_* mapping, then exec (user's profile untouched).
+  export LITELLM_BASE_URL="$CRED_BASE" LITELLM_API_KEY="$CRED_KEY"
+  # shellcheck disable=SC1091
+  source "$DIR/assets/claude-code-env.sh"
+  exec claude "$@"
+}
+
+# ---------- run opencode ----------
+run_opencode() {
+  resolve_credentials
+  gateway_check
+  command -v opencode >/dev/null || die "opencode CLI not found on PATH"
+  # assets/opencode.json uses {env:VAR} interpolation; no config files touched.
+  export LITELLM_BASE_URL="$CRED_BASE" LITELLM_API_KEY="$CRED_KEY"
+  export OPENCODE_CONFIG="$DIR/assets/opencode.json"
+  exec opencode "$@"
+}
+
+# ---------- dispatch ----------
+case "${1:-start}" in
+  start) start_stack ;;
+  install)
+    case "${2:-}" in
+      opencode) install_opencode ;;
+      *) die "unknown install target: ${2:-} (expected: opencode)" ;;
+    esac
+    ;;
+  run)
+    case "${2:-}" in
+      claude) open_claude "${@:3}" ;;
+      opencode) open_opencode "${@:3}" ;;
+      *) die "unknown run target: ${2:-} (expected: claude | opencode)" ;;
+    esac
+    ;;
+  test) exec bash "$DIR/test/e2e.sh" ;;
+  help|-h|--help) usage ;;
+  *) die "unknown command: $1 (see ./qwenmakase help)" ;;
+esac

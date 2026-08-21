@@ -39,6 +39,16 @@ model_list:
       chat_template_kwargs:
         reasoning_effort: xhigh
 
+  # Claude Code (Anthropic Messages API). Routed to vLLM's native
+  # /v1/messages implementation (anthropic passthrough), NOT the OpenAI
+  # Responses API translation: vLLM handles Claude Code's mid-conversation
+  # system messages natively. api_base is the vLLM origin WITHOUT /v1.
+  - model_name: ${LITELLM_MODEL_NAME}-ant
+    litellm_params:
+      model: anthropic/${VLLM_MODEL_ID}
+      api_base: ${VLLM_ANTHROPIC_BASE_URL}
+      api_key: ${VLLM_API_KEY}
+
 general_settings:
   coordination_redis:
     url: os.environ/REDIS_URL

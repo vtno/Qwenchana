@@ -1,5 +1,23 @@
 # Harness configs for our LiteLLM gateway (Qwen3.8-27B)
 
+## Recommended: one-command setup
+
+From the repo root:
+
+```bash
+./qwenmakase install opencode   # merge the provider into ~/.config/opencode/opencode.json
+./qwenmakase run claude         # launch Claude Code now (env injected, nothing written)
+./qwenmakase run opencode       # launch OpenCode now
+```
+
+- `install opencode`: your existing config is extended (other providers/settings
+  kept) and backed up to `opencode.json.bak`. Restart opencode to pick it up.
+- `run` launches the client in a configured shell and changes nothing
+  (same effect as the manual methods below).
+- All read the key from `LITELLM_API_KEY` if set, otherwise `litellm/.env`.
+
+## Manual: env vars
+
 Both configs drive Claude Code and OpenCode through the LiteLLM proxy at
 `LITELLM_BASE_URL` using the LiteLLM master key. No secrets are stored in these
 files — set the two env vars first:
@@ -43,8 +61,10 @@ everywhere (`<repo>` = wherever you cloned this repo). It sets:
 
 - `ANTHROPIC_BASE_URL`    → `LITELLM_BASE_URL`
 - `ANTHROPIC_AUTH_TOKEN`  → `LITELLM_API_KEY` (sent as `Authorization: Bearer`)
-- `ANTHROPIC_MODEL`       → `qwen3.8-27b` (override by pre-setting `ANTHROPIC_MODEL`)
-- `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` (LiteLLM drops unknown `anthropic-beta` fields)
+- `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` → `qwen3.8-27b-ant`
+  (the gateway's Anthropic-passthrough entry, routed to vLLM's native
+  `/v1/messages`; override by pre-setting `ANTHROPIC_MODEL`)
+- `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`
 
 Verify with `claude` → `/status`: the `Anthropic base URL` line should show
 `LITELLM_BASE_URL`, and the credential line should name `ANTHROPIC_AUTH_TOKEN`.
