@@ -40,23 +40,33 @@ resolve_credentials() {
     fi
     [ -n "$CRED_KEY" ] || die "no API key given (and none in env or litellm/.env)"
     printf "  Save to shell profile so clients pick it up? [y/N] " >&2
-    read -r yn
+    read -r yn || true
     if [[ "${yn:-n}" =~ ^[Yy]$ ]]; then
       printf "  RC file to append to [~/.bashrc]: " >&2
-      read -r PROFILE_INPUT
+      read -r PROFILE_INPUT || true
       PROFILE="${PROFILE_INPUT:-$HOME/.bashrc}"
       PROFILE="${PROFILE/#\~/$HOME}"
-      cat >> "$PROFILE" <<EOF
-
-# Qwenchana gateway (added by qcn)
-export LITELLM_BASE_URL="$CRED_BASE"
-export LITELLM_API_KEY="$CRED_KEY"
-EOF
-      ok "Saved to $PROFILE."
-      printf "  Reload it now for this shell's children? [y/N] " >&2
-      read -r yn
-      [[ "${yn:-n}" =~ ^[Yy]$ ]] && export LITELLM_BASE_URL="$CRED_BASE" LITELLM_API_KEY="$CRED_KEY"
-      ok "New shells get it automatically (source $PROFILE applies it to this one)."
+      # If the profile already sets our vars, ask before re-appending.
+      if [ -f "$PROFILE" ] && grep -q "LITELLM_BASE_URL=" "$PROFILE" 2>/dev/null; then
+        printf "  %s already sets LITELLM_BASE_URL. Append new values? [y/N] " "$PROFILE" >&2
+        read -r yn || true
+        if [[ "${yn:-n}" =~ ^[Yy]$ ]]; then
+          SAVED=true
+        else
+          ok "Skipped — no profile changes."
+        fi
+      else
+        SAVED=true
+      fi
+      if [ "${SAVED:-false}" = "true" ]; then
+        printf '\n# Qwenchana gateway (added by qcn)\nexport LITELLM_BASE_URL=%s\nexport LITELLM_API_KEY=%s\n' \
+          "\"$CRED_BASE\"" "\"$CRED_KEY\"" >> "$PROFILE"
+        ok "Saved to $PROFILE."
+        printf "  Reload it now for this shell's children? [y/N] " >&2
+        read -r yn || true
+        [[ "${yn:-n}" =~ ^[Yy]$ ]] && export LITELLM_BASE_URL="$CRED_BASE" LITELLM_API_KEY="$CRED_KEY"
+        ok "New shells get it automatically (source $PROFILE applies it to this one)."
+      fi
     fi
   fi
   [ -n "${CRED_KEY:-}" ] || die "no API key: set LITELLM_API_KEY or create litellm/.env first (run ./qcn to set up the stack)"
