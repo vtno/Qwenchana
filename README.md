@@ -129,10 +129,10 @@ on Ampere (see Performance).
 
 #### Local patch (not upstream yet)
 
-Fixes vLLM #52434 for quantized-lm_head NVFP4 checkpoints (open PR #52451):
+Fixes [vLLM #52434](https://github.com/vllm-project/vllm/issues/52434) for quantized-lm_head NVFP4 checkpoints (open [PR #52451](https://github.com/vllm-project/vllm/pull/52451)):
 [`patches/vllm-0.27.1-humming-utils-52434.patch`](https://github.com/vtno/Qwenchana/blob/main/patches/vllm-0.27.1-humming-utils-52434.patch).
 Baked into the image at build time; [`setup.sh`](https://github.com/vtno/Qwenchana/blob/main/setup.sh) applies it to the venv;
-`git am` it into a vLLM checkout if you prefer. Drop once #52451 merges.
+`git am` it into a vLLM checkout if you prefer. Drop once [#52451](https://github.com/vllm-project/vllm/pull/52451) merges.
 
 ### Gateway
 

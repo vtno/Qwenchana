@@ -7,7 +7,7 @@
 - Model: unsloth/Qwen3.8-27B-NVFP4 (NVFP4; MTP head weights present but NOT used)
 - Serve args: --tensor-parallel-size 2 --max-model-len 262144 --reasoning-parser qwen3
 - Env: VLLM_NVFP4_GEMM_BACKEND=marlin, VLLM_TEST_FORCE_FP8_MARLIN=1
-- Patches: local humming_utils.py fixes (see ../README.md) - vLLM issue #52434
+- Patches: local humming_utils.py fixes (see ../README.md) - [vLLM #52434](https://github.com/vllm-project/vllm/issues/52434)
 - KV: 22.25 GB/GPU used at idle (gpu-memory-utilization default 0.90)
 - GPU util during load: 98-100% both GPUs
 - IMPORTANT: engine log shows speculative_config=None => speculative decoding (MTP) was OFF in baseline

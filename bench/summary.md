@@ -34,7 +34,7 @@ Env: VLLM_NVFP4_GEMM_BACKEND=marlin, VLLM_TEST_FORCE_FP8_MARLIN=1
 Load ~22.25 GB/GPU (of 24), GPUs ~98% utilized under load. Hardware is the ceiling.
 
 ## Known caveats
-- Local humming_utils.py patches (vLLM #52434) lost on vllm upgrade; re-apply.
+- Local humming_utils.py patches ([vLLM #52434](https://github.com/vllm-project/vllm/issues/52434)) lost on vllm upgrade; re-apply.
 - MTP enable requires `num_speculative_tokens:1` (config lacks mtp_num_hidden_layers).
 - Thinking enabled by default; disable per request via
   `chat_template_kwargs: {"enable_thinking": false}`.
