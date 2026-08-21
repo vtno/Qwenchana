@@ -84,27 +84,27 @@ cd "$DIR"
 docker compose up -d --build
 
 # ---------- 4. wait for vllm ----------
-info "Waiting for vllm to become healthy (this takes 2-5 min)..."
+info "Waiting for vllm to become healthy (typically 4-8 min; up to ~20 min on a flaky boot)..."
 HEALTHY=false
-for i in $(seq 1 90); do
+for i in $(seq 1 60); do
   STATUS=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' qwen38-vllm 2>/dev/null || echo "missing")
   if [ "$STATUS" = "healthy" ]; then
     HEALTHY=true
     break
   fi
   if [ "$STATUS" = "missing" ]; then
-    printf "\r  [%3ds] vllm container not found — check docker ps" "$((i*2))"
+    printf "\r  [%4ds] vllm container not found - check docker ps   " "$((i*20))"
   else
-    printf "\r  [%3ds] %s" "$((i*2))" "$STATUS"
+    printf "\r  [%4ds] %s   " "$((i*20))" "$STATUS"
   fi
-  sleep 2
+  sleep 20
 done
 echo ""
 
 if [ "$HEALTHY" = true ]; then
   ok "vllm is healthy!"
 else
-  printf "\033[33mWarning: vllm did not become healthy within 3 minutes.\033[0m\n"
+  printf "\033[33mWarning: vllm did not become healthy within 20 minutes.\033[0m\n"
   printf "  Check logs: docker logs qwen38-vllm --tail 20\n"
   printf "  The container will keep restarting; try again in a few minutes.\n"
 fi
