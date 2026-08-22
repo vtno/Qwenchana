@@ -3,7 +3,7 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$DIR/.venv"
-MODEL_ID="unsloth/Qwen3.8-27B-NVFP4"
+MODEL_ID="qwen3.8-27b-w4a16"
 
 if [ ! -x "$VENV_DIR/bin/vllm" ]; then
   echo "ERROR: vLLM not installed. Run $DIR/setup.sh first." >&2

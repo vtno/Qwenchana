@@ -7,6 +7,8 @@ models-gguf/
 
 # Model weights (downloaded by setup.sh)
 models/
+models-nvfp4/
+models-w4a16/
 
 # Secrets / local config - never commit real values
 .env
