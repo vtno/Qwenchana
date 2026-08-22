@@ -46,6 +46,14 @@
 - [x] G: --watermark 0.03 -- no win, c8 TTFR +11% (within variance), c1 flat (G_scheduler/) - KEEP DEFAULT
 - [x] G2: llama.cpp GGUF Q8_0 vs UD-Q4_K_XL -- both slower than vLLM NVFP4 (G_llamacpp_q8/, G_llamacpp_q4/) - KEEP NVFP4
       Q8: 1672 t/s pp c1 (+59% TTFT), 27.6 t/s gen; Q4: 1550 t/s pp c1 (+70% TTFT), 40.8 t/s gen vs 2529/66.9 NVFP4
+- [x] H: model swap -> W4A16 INT4 (RedHatAI/Qwen3.8-27B-INT4, compressed-tensors W4A16 G128, Marlin kernel)
+      (H_w4a16_autoround/ (README.md + bench_pp.md + bench_conc.md)) - LIVE since 2026-08-22 ~15:44 (served-model-name label unchanged)
+      - c1 tg256: 75.5 t/s vs 66.7 NVFP4 (+13%); pp8192 c1: 2416 vs 2487 (-3%)
+      - pp sweep gen d0: 78.1/76.0/69.3 vs 67.8/66.3/63.7 (+9..+15%); prefill -0.5..-7%
+      - c4/c8/c16 gen total: 71.1/71.2/71.6 vs 74.2/72.7/72.3 (-1..-4%, ~flat); peak/req slightly up
+      - CONFIRMED: TTFR +21..+30% at c4-c16 (16.2->21.1s @ c8) at identical prefill t/s,
+        reproducible (bench_conc_rerun.md); c1 unaffected (3.4 vs 3.5s); mechanism unexplained
+      - OPEN: accuracy pass (gsm8k/mt-bench) before adopting as documented default
 
 ## Final config (baked into serve.sh, live since 2026-08-19 ~21:45)
   --tensor-parallel-size 2 --max-model-len 262144 --reasoning-parser qwen3

@@ -93,6 +93,33 @@ LiteLLM proxy in `../litellm/` (docker compose, port 4000, restart=unless-stoppe
   aliases must differ from backend model ID. Apply .env changes:
   `docker compose up -d --force-recreate`.
 
+## 2026-08-22 update: W4A16 (INT4 G128) swapped in, now LIVE
+
+Model: RedHatAI/Qwen3.8-27B-INT4 (compressed-tensors W4A16 G128, GPTQ+AWQ;
+visual/lm_head BF16; ~9.7 GB/GPU weights). Kernel: Marlin WNA16 (single-level
+INT4 dequant). Same serve flags; served-model-name label unchanged.
+Full record: H_w4a16_autoround/README.md.
+
+| pp8192/tg256 | NVFP4 (A) | W4A16 (H) | delta |
+|---|---:|---:|---:|
+| prefill c1 | 2487 | 2416 | -3% |
+| gen c1 | 66.7 | 75.5 | +13% |
+| gen c4/c8/c16 | 74.2 / 72.7 / 72.3 | 71.1 / 71.2 / 71.6 | -1..-4% |
+| TTFR c1 | 3.4 s | 3.5 s | ~0 |
+| TTFR c8 | 16.2 s | 21.1 s | +30% (confirmed reproducible, rerun 21.10s) |
+
+pp sweep (tg128, d0): gen 78.1/76.0/69.3 vs 67.8/66.3/63.7 (+9..+15%);
+prefill 2562/2440/2185 vs 2757/2502/2198 (-0.5..-7%).
+
+Verdict: single-stream interactive decode is the clear winner (+13%); batch
+throughput flat. TTFR +21..30% at c4-c16 confirmed reproducible (scheduler
+effect, prefill t/s identical; irrelevant for this single-user box).
+
+**Quality A/B (lm-eval 0.4.12, greedy, n=64/task): gsm8k flexible 0.5625 vs
+0.5781 (-1.6pt, noise); humaneval pass@1 0.7344 vs 0.6875 (+4.7pt, favors
+W4A16). No degradation -> W4A16 ADOPTED AS DEFAULT (2026-08-22).**
+Rollback to NVFP4 anytime: `./swap_model.sh nvfp4` (auto-rolls back on failure).
+
 ## Evidence
 See per-experiment dirs: A_baseline/ B_mtp_on/ C_prefix_cache/ D_humming_kernel/
-E_scheduler/ F_kv_fp8/ + this README for the full back-trace.
+E_scheduler/ F_kv_fp8/ H_w4a16_autoround/ + this README for the full back-trace.
