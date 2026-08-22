@@ -5,8 +5,8 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV="$DIR/litellm/.env"
 ENV_EXAMPLE="$DIR/litellm/.env.example"
 MODEL_DIR="$DIR/models"
-MODEL_ID="unsloth/Qwen3.8-27B-NVFP4"
-MODEL_REV="7d6f8d4d72f56b92b3cdbf22f156b90e1bab0108"
+MODEL_ID="RedHatAI/Qwen3.8-27B-INT4"
+MODEL_REV="2fb0debc365fb6c1683d7d3ad7722470919627a8"
 
 # ---------- helpers ----------
 die()  { printf "\033[31mError: %s\033[0m\n" "$1" >&2; exit 1; }
@@ -131,7 +131,7 @@ start_stack() {
   if [ -f "$MODEL_DIR/config.json" ]; then
     ok "Models already present at $MODEL_DIR"
   else
-    info "Model weights (~22 GB) not found at $MODEL_DIR"
+    info "Model weights (~20 GB) not found at $MODEL_DIR"
     read -rp "Download now? (requires huggingface_hub) [Y/n] " yn
     yn="${yn:-Y}"
     if [[ ! "$yn" =~ ^[Nn]$ ]]; then

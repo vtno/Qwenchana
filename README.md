@@ -7,7 +7,7 @@ Qwenchana is a turnkey Qwen3.8-27B serving setup specifically for inference serv
 
 Omakase style one command llm serving solution built for Claude Code & OpenCode:
 
-- `unsloth/Qwen3.8-27B-NVFP4` (256k context) on **2x RTX 3090**
+- `RedHatAI/Qwen3.8-27B-INT4` (W4A16, 256k context) on **2x RTX 3090**
 - vLLM
 - LiteLLM gateway (auth, rate limits, budgets)
 - Claude Code / OpenCode client configs.
@@ -19,7 +19,7 @@ client (claude / opencode / any OpenAI client)
 LiteLLM gateway ── Postgres (keys/budgets) + Redis (rate limits)
         │  http://vllm:8000
         ▼
-vLLM serve (TP2, NVFP4/Marlin, 256k, prefix caching)
+vLLM serve (TP2, W4A16/Marlin, 256k, prefix caching)
 ```
 
 ## Quick start
@@ -67,8 +67,8 @@ Disable thinking per request with `"chat_template_kwargs": {"enable_thinking": f
 <summary>Manual setup / dev path</summary>
 
 ```bash
-hf download unsloth/Qwen3.8-27B-NVFP4 \
-  --revision 7d6f8d4d72f56b92b3cdbf22f156b90e1bab0108 --local-dir models
+hf download RedHatAI/Qwen3.8-27B-INT4 \
+  --revision 2fb0debc365fb6c1683d7d3ad7722470919627a8 --local-dir models
 cp litellm/.env.example litellm/.env
 docker compose up -d --build
 ```
@@ -128,15 +128,19 @@ vLLM 0.27.1 (official image, digest-pinned, CUDA 13 build) with:
 --enable-auto-tool-choice --tool-call-parser qwen3_coder
 ```
 
-plus `VLLM_NVFP4_GEMM_BACKEND=marlin` — NVFP4 is officially a Hopper/Blackwell
-format; on Ampere it works via the Marlin backend + the patch below. The tool
+Default checkpoint is W4A16 (compressed-tensors W4A16 G128, served via the
+Marlin WNA16 kernel; +13% single-stream generation over NVFP4 at quality
+parity — see Performance / `bench/H_w4a16_autoround/`). NVFP4
+(`unsloth/Qwen3.8-27B-NVFP4`) still works on Ampere via
+`VLLM_NVFP4_GEMM_BACKEND=marlin` + the patch below (NVFP4 is officially a
+Hopper/Blackwell format). The tool
 flags are required (clients sending `tool_choice: "auto"` 400 without them).
 The MTP draft head is in the checkpoint but **disabled** — it benchmarks slower
 on Ampere (see Performance).
 
 #### Local patch (not upstream yet)
 
-Fixes [vLLM #52434](https://github.com/vllm-project/vllm/issues/52434) for quantized-lm_head NVFP4 checkpoints (open [PR #52451](https://github.com/vllm-project/vllm/pull/52451)):
+Fixes [vLLM #52434](https://github.com/vllm-project/vllm/issues/52434) for quantized-lm_head NVFP4 checkpoints (open [PR #52451](https://github.com/vllm-project/vllm/pull/52451)); required for the NVFP4 path, harmless for W4A16:
 [`patches/vllm-0.27.1-humming-utils-52434.patch`](https://github.com/vtno/Qwenchana/blob/main/patches/vllm-0.27.1-humming-utils-52434.patch).
 Baked into the image at build time; [`setup.sh`](https://github.com/vtno/Qwenchana/blob/main/setup.sh) applies it to the venv;
 `git am` it into a vLLM checkout if you prefer. Drop once [#52451](https://github.com/vllm-project/vllm/pull/52451) merges.
@@ -161,11 +165,12 @@ Baked into the image at build time; [`setup.sh`](https://github.com/vtno/Qwencha
 
 ### Performance
 
-Headline (2x 3090, TP2, pp8192/tg256): prefill ~2500 t/s, generation
-66.7 t/s (c1) / ~73 t/s (c8). Verdicts baked into the flags:
+Headline (2x 3090, TP2, pp8192/tg256, W4A16 default): prefill ~2400 t/s,
+generation 75.5 t/s (c1) / ~72 t/s (c8). Verdicts baked into the flags:
 
 | Serving choice        | Effect (2x 3090)                              |
 | --------------------- | --------------------------------------------- |
+| **W4A16 default**     | +13% gen c1 vs NVFP4, quality parity (H)      |
 | **MTP off**           | −48% single-stream on Ampere                  |
 | **prefix caching on** | 8x faster TTFR on cached context, no gen penalty |
 | **`--max-num-batched-tokens 16384`** | prefill +2–3%, gen flat          |
@@ -179,4 +184,4 @@ Full back-trace with raw `llama-benchy` tables: [`bench/`](https://github.com/vt
   (~1-in-6). In compose this self-heals (`restart: unless-stopped`); on the
   venv path, restart in a loop or fall back to `--enforce-eager`.
 - Upgrading vLLM = rebuild the image + re-verify the patch.
-- Weights (~22 GB) are downloaded once into `models/` (mounted, never in the image).
+- Weights (~20 GB) are downloaded once into `models/` (mounted, never in the image).
